@@ -1,21 +1,22 @@
-export function generatePDF(data) {
-  const { jsPDF } = window.jspdf;
+import jsPDF from "jspdf";
 
+export function generatePDF(data) {
   const doc = new jsPDF({ format: "letter" });
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 20;
   const contentWidth = pageWidth - margin * 2;
+  let yPos = 18;
 
-  let yPos = 15;
+  /* ---------------- HEADER ---------------- */
+  const logo = new Image();
+  logo.src = "/expressheartcarelogo.png";
 
-  /* ---------------------------------
-     HEADER
-  --------------------------------- */
-  const logoImg = new Image();
-  logoImg.src = "/expressheartcarelogo.png";
-  doc.addImage(logoImg, "PNG", margin, yPos, 24, 24);
+  // SAFE image add (prevents crash)
+  try {
+    doc.addImage(logo, "PNG", margin, yPos, 24, 24);
+  } catch (e) {}
 
   doc.setFontSize(13);
   doc.setFont(undefined, "bold");
@@ -24,219 +25,109 @@ export function generatePDF(data) {
   doc.setFontSize(10);
   doc.setFont(undefined, "normal");
   doc.text("Preliminary Cardiac Screening Report", margin + 35, yPos + 14);
-  doc.text("(314) 248-4076 | expressheartcare@gmail.com", margin + 35, yPos + 20);
+  doc.text("(314) 557-2620 | expressheartcare@gmail.com", margin + 35, yPos + 20);
 
   yPos += 34;
   doc.line(margin, yPos, pageWidth - margin, yPos);
   yPos += 8;
 
-  /* ---------------------------------
-     PATIENT INFORMATION
-  --------------------------------- */
-  doc.setFontSize(12);
-  doc.setFont(undefined, "bold");
-  doc.text("Patient Information", margin, yPos);
-  yPos += 8;
+  /* ---------------- PATIENT INFO ---------------- */
+  section("Patient Information");
 
-  doc.setFontSize(10);
-  doc.setFont(undefined, "normal");
+  row("Name", data.patientName, "Height", data.vitals?.height);
+  row("DOB", data.dateOfBirth, "Weight", data.vitals?.weight ? `${data.vitals.weight} lbs` : "");
+  row("Gender", data.gender, "BMI", data.vitals?.bmi);
+  row("Age", data.age);
 
-  doc.text("Name:", margin, yPos);
-  doc.text(data.patientName || "", margin + 25, yPos);
+  divider();
 
-  doc.text("Height:", margin + 95, yPos);
-  doc.text(data.vitals?.height || "", margin + 120, yPos);
-  yPos += 6;
+  /* ---------------- VITALS ---------------- */
+  section("Vital Signs");
 
-  doc.text("DOB:", margin, yPos);
-  doc.text(data.dateOfBirth || "", margin + 25, yPos);
+  row("Blood Pressure", data.vitals?.bloodPressure, "Heart Rate", data.vitals?.heartRate ? `${data.vitals.heartRate} bpm` : "");
+  row("Oxygen Saturation", data.vitals?.o2Level ? `${data.vitals.o2Level}%` : "");
 
-  doc.text("Weight:", margin + 95, yPos);
-  doc.text(
-    data.vitals?.weight ? `${data.vitals.weight} lbs` : "",
-    margin + 120,
-    yPos
-  );
-  yPos += 6;
+  divider();
 
-  doc.text("Gender:", margin, yPos);
-  doc.text(data.gender || "", margin + 25, yPos);
+  /* ---------------- EKG ---------------- */
+  resultSection("Electrocardiogram (EKG)", data.ekg?.status, data.ekg?.notes);
 
-  doc.text("BMI:", margin + 95, yPos);
-  doc.text(data.vitals?.bmi || "", margin + 120, yPos);
-  yPos += 6;
+  /* ---------------- HEART SOUNDS ---------------- */
+  resultSection("Heart Sounds Examination", data.heartSounds?.status, data.heartSounds?.notes);
 
-  doc.text("Age:", margin, yPos);
-  doc.text(data.age || "", margin + 25, yPos);
+  /* ---------------- FITNESS ---------------- */
+  section("Fitness Assessment");
+  line(`Sit-to-Stand (30s): ${data.fitness?.sitStandCount || "N/A"}`);
+  line(`Estimated VO2 Max: ${data.fitness?.vo2Max || "N/A"} ml/kg/min`);
+  line(`Functional Category: ${data.fitness?.fitnessCategory || "N/A"}`);
 
-  yPos += 10;
-  doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 8;
+  divider();
 
-  /* ---------------------------------
-     VITAL SIGNS
-  --------------------------------- */
-  doc.setFontSize(12);
-  doc.setFont(undefined, "bold");
-  doc.text("Vital Signs", margin, yPos);
-  yPos += 8;
+  /* ---------------- HEART RISK ---------------- */
+  section("Heart Risk Score");
+  line(data.heartRiskScore || "Not assessed");
 
-  doc.setFontSize(10);
-  doc.setFont(undefined, "normal");
-
-  doc.text("Blood Pressure:", margin, yPos);
-  doc.text(data.vitals?.bloodPressure || "", margin + 45, yPos);
-
-  doc.text("Heart Rate:", margin + 95, yPos);
-  doc.text(
-    data.vitals?.heartRate ? `${data.vitals.heartRate} bpm` : "",
-    margin + 120,
-    yPos
-  );
-  yPos += 6;
-
-  doc.text("Oxygen Saturation:", margin, yPos);
-  doc.text(
-    data.vitals?.o2Level ? `${data.vitals.o2Level}%` : "",
-    margin + 45,
-    yPos
-  );
-
-  yPos += 10;
-  doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 8;
-
-  /* ---------------------------------
-     EKG
-  --------------------------------- */
-  doc.setFontSize(12);
-  doc.setFont(undefined, "bold");
-  doc.text("Electrocardiogram (EKG)", margin, yPos);
-
-  doc.setFontSize(10);
-  doc.setFont(undefined, "normal");
-  doc.text(
-    `Result: ${data.ekg?.status === "normal" ? "Normal" : "Needs Review"}`,
-    pageWidth - margin - 55,
-    yPos
-  );
-  yPos += 7;
-
-  doc.text("Notes:", margin, yPos);
-  yPos += 4;
-
-  if (data.ekg?.notes) {
-    const lines = doc.splitTextToSize(data.ekg.notes, contentWidth - 5);
-    doc.text(lines, margin + 5, yPos);
-    yPos += lines.length * 4;
-  }
-
-  yPos += 6;
-  doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 8;
-
-  /* ---------------------------------
-     HEART SOUNDS
-  --------------------------------- */
-  doc.setFontSize(12);
-  doc.setFont(undefined, "bold");
-  doc.text("Heart Sounds Examination", margin, yPos);
-
-  doc.setFontSize(10);
-  doc.setFont(undefined, "normal");
-  doc.text(
-    `Result: ${data.heartSounds?.status === "normal" ? "Normal" : "Needs Review"}`,
-    pageWidth - margin - 55,
-    yPos
-  );
-  yPos += 7;
-
-  doc.text("Notes:", margin, yPos);
-  yPos += 4;
-
-  if (data.heartSounds?.notes) {
-    const lines = doc.splitTextToSize(data.heartSounds.notes, contentWidth - 5);
-    doc.text(lines, margin + 5, yPos);
-    yPos += lines.length * 4;
-  }
-
-  yPos += 6;
-  doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 8;
-
-  /* ---------------------------------
-     FITNESS TEST
-  --------------------------------- */
-  doc.setFontSize(12);
-  doc.setFont(undefined, "bold");
-  doc.text("Fitness Assessment", margin, yPos);
-  yPos += 8;
-
-  doc.setFontSize(10);
-  doc.setFont(undefined, "normal");
-
-  doc.text(
-    `30s Sit-to-Stand Repetitions: ${data.fitness?.sitStandCount || "N/A"}`,
-    margin,
-    yPos
-  );
-  yPos += 6;
-
-  doc.text(
-    `Estimated VO2 Max: ${
-      data.fitness?.vo2Max
-        ? `${data.fitness.vo2Max} ml/kg/min`
-        : "N/A"
-    }`,
-    margin,
-    yPos
-  );
-  yPos += 6;
-
-  doc.text(
-    `Functional Category: ${data.fitness?.fitnessCategory || "N/A"}`,
-    margin,
-    yPos
-  );
-
-  yPos += 10;
-  doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 8;
-
-  /* ---------------------------------
-     HEART RISK SCORE
-  --------------------------------- */
-  doc.setFontSize(12);
-  doc.setFont(undefined, "bold");
-  doc.text("Heart Risk Score", margin, yPos);
-  yPos += 7;
-
-  doc.setFontSize(10);
-  doc.setFont(undefined, "normal");
-  doc.text(data.heartRiskScore || "Not assessed", margin, yPos);
-
-  /* ---------------------------------
-     DISCLAIMER (FOOTER)
-  --------------------------------- */
-  const disclaimer =
-    "DISCLAIMER: This document is a preliminary health screening report generated prior to physician review. " +
-    "It is not a medical diagnosis. All findings are subject to confirmation, modification, and approval by a licensed physician. " +
-    "Patients should not make medical decisions based solely on this report.";
-
+  /* ---------------- DISCLAIMER ---------------- */
   doc.setFontSize(8);
   doc.setTextColor(120);
-  const disclaimerLines = doc.splitTextToSize(disclaimer, contentWidth);
-  doc.text(disclaimerLines, margin, pageHeight - 20);
+  const disclaimer =
+    "DISCLAIMER: This is a preliminary health screening report prior to physician review. " +
+    "It is not a medical diagnosis. All findings are subject to confirmation and approval by a licensed physician.";
 
   doc.text(
-    "Preliminary Report – Pending Physician Review",
+    doc.splitTextToSize(disclaimer, contentWidth),
     margin,
-    pageHeight - 8
+    pageHeight - 22
   );
 
-  /* ---------------------------------
-     OUTPUT
-  --------------------------------- */
-  const pdfBlob = doc.output("blob");
-  return URL.createObjectURL(pdfBlob);
+  doc.text("Preliminary Report – Pending Physician Review", margin, pageHeight - 10);
+
+  return URL.createObjectURL(doc.output("blob"));
+
+  /* ===== helpers ===== */
+
+  function section(title) {
+    doc.setFontSize(12);
+    doc.setFont(undefined, "bold");
+    doc.text(title, margin, yPos);
+    yPos += 8;
+    doc.setFontSize(10);
+    doc.setFont(undefined, "normal");
+  }
+
+  function row(l1, v1, l2, v2) {
+    doc.text(`${l1}:`, margin, yPos);
+    doc.text(v1 || "", margin + 28, yPos);
+    if (l2) {
+      doc.text(`${l2}:`, margin + 95, yPos);
+      doc.text(v2 || "", margin + 120, yPos);
+    }
+    yPos += 6;
+  }
+
+  function line(text) {
+    doc.text(text, margin, yPos);
+    yPos += 6;
+  }
+
+  function divider() {
+    yPos += 4;
+    doc.line(margin, yPos, pageWidth - margin, yPos);
+    yPos += 8;
+  }
+
+  function resultSection(title, status, notes) {
+    section(title);
+    doc.text(
+      `Result: ${status === "normal" ? "Normal" : "Needs Review"}`,
+      pageWidth - margin - 55,
+      yPos - 8
+    );
+    if (notes) {
+      const lines = doc.splitTextToSize(notes, contentWidth);
+      doc.text(lines, margin + 5, yPos);
+      yPos += lines.length * 4;
+    }
+    divider();
+  }
 }
