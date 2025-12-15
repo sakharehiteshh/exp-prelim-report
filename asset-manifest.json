@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/ExpressPrelimReport/static/css/main.0009c9a4.css",
+    "main.js": "/ExpressPrelimReport/static/js/main.6265e72b.js",
+    "static/js/453.d0b23fef.chunk.js": "/ExpressPrelimReport/static/js/453.d0b23fef.chunk.js",
+    "index.html": "/ExpressPrelimReport/index.html",
+    "main.0009c9a4.css.map": "/ExpressPrelimReport/static/css/main.0009c9a4.css.map",
+    "main.6265e72b.js.map": "/ExpressPrelimReport/static/js/main.6265e72b.js.map",
+    "453.d0b23fef.chunk.js.map": "/ExpressPrelimReport/static/js/453.d0b23fef.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.0009c9a4.css",
+    "static/js/main.6265e72b.js"
+  ]
+}
