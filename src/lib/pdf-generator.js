@@ -9,29 +9,24 @@ export function generatePDF(data) {
   const contentWidth = pageWidth - margin * 2;
   let yPos = 18;
 
-  /* ---------------- HEADER ---------------- */
-  const logo = new Image();
-  logo.src = "/expressheartcarelogo.png";
-
-  // SAFE image add (prevents crash)
-  try {
-    doc.addImage(logo, "PNG", margin, yPos, 24, 24);
-  } catch (e) {}
+/* ---------------- HEADER ---------------- */
+  const logo = require("../assets/expressheartcarelogo.png");
+  doc.addImage(logo, "PNG", margin, yPos, 53, 17);
+  
 
   doc.setFontSize(13);
   doc.setFont(undefined, "bold");
-  doc.text("Express Heart Care", margin + 35, yPos + 8);
+  doc.text("Express Heart Tests", margin + 75, yPos + 8);
 
   doc.setFontSize(10);
   doc.setFont(undefined, "normal");
-  doc.text("Preliminary Cardiac Screening Report", margin + 35, yPos + 14);
-  doc.text("(314) 557-2620 | expressheartcare@gmail.com", margin + 35, yPos + 20);
+  doc.text("Preliminary Cardiac Screening Report", margin + 75, yPos + 14);
+  doc.text("(314) 557-2620 | expressheartcare@gmail.com", margin + 75, yPos + 20);
 
-  yPos += 34;
-  doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 8;
+  yPos += 24;
+  divider();
 
-  /* ---------------- PATIENT INFO ---------------- */
+  /* ---------------- PATIENT INFORMATION ---------------- */
   section("Patient Information");
 
   row("Name", data.patientName, "Height", data.vitals?.height);
@@ -41,7 +36,7 @@ export function generatePDF(data) {
 
   divider();
 
-  /* ---------------- VITALS ---------------- */
+  /* ---------------- VITAL SIGNS ---------------- */
   section("Vital Signs");
 
   row("Blood Pressure", data.vitals?.bloodPressure, "Heart Rate", data.vitals?.heartRate ? `${data.vitals.heartRate} bpm` : "");
@@ -55,11 +50,49 @@ export function generatePDF(data) {
   /* ---------------- HEART SOUNDS ---------------- */
   resultSection("Heart Sounds Examination", data.heartSounds?.status, data.heartSounds?.notes);
 
-  /* ---------------- FITNESS ---------------- */
-  section("Fitness Assessment");
-  line(`Sit-to-Stand (30s): ${data.fitness?.sitStandCount || "N/A"}`);
-  line(`Estimated VO2 Max: ${data.fitness?.vo2Max || "N/A"} ml/kg/min`);
-  line(`Functional Category: ${data.fitness?.fitnessCategory || "N/A"}`);
+/* ---------------- FITNESS ---------------- */
+section("Fitness Assessment");
+
+// Status inline on the right (same style as EKG)
+doc.text(
+  `Result: ${data.fitness?.status === "normal" ? "Normal" : "Needs Review"}`,
+  pageWidth - margin - 55,
+  yPos - 8
+);
+
+// Notes (if any)
+if (data.fitness?.notes) {
+  const lines = doc.splitTextToSize(data.fitness.notes, contentWidth);
+  doc.text(lines, margin + 5, yPos);
+  yPos += lines.length * 4 + 2;
+}
+
+// Sit-to-Stand data
+line(`30s Sit-to-Stand Count: ${data.fitness?.sitStandCount || "N/A"}`);
+line(`Estimated VO2 Max: ${data.fitness?.vo2Max || "N/A"} ml/kg/min`);
+line(`Functional Category: ${data.fitness?.fitnessCategory || "N/A"}`);
+
+divider();
+
+
+  /* ---------------- BLOOD TEST RESULTS ---------------- */
+  section("Finger Stick Cholesterol Test");
+
+  row("Total Cholesterol", data.cholesterol?.total ? `${data.cholesterol.total} mg/dL` : "",
+      "LDL", data.cholesterol?.ldl ? `${data.cholesterol.ldl} mg/dL` : "");
+
+  row("HDL", data.cholesterol?.hdl ? `${data.cholesterol.hdl} mg/dL` : "",
+      "Triglycerides", data.cholesterol?.triglycerides ? `${data.cholesterol.triglycerides} mg/dL` : "");
+
+  row("Glucose", data.cholesterol?.glucose ? `${data.cholesterol.glucose} mg/dL` : "",
+      "Status", data.cholesterol?.status === "normal" ? "Normal" : "Needs Review");
+
+  if (data.cholesterol?.notes) {
+    line("Notes:");
+    const lines = doc.splitTextToSize(data.cholesterol.notes, contentWidth);
+    doc.text(lines, margin + 5, yPos);
+    yPos += lines.length * 4 + 2;
+  }
 
   divider();
 
@@ -70,38 +103,37 @@ export function generatePDF(data) {
   /* ---------------- DISCLAIMER ---------------- */
   doc.setFontSize(8);
   doc.setTextColor(120);
+
   const disclaimer =
     "DISCLAIMER: This is a preliminary health screening report prior to physician review. " +
     "It is not a medical diagnosis. All findings are subject to confirmation and approval by a licensed physician.";
 
-  doc.text(
-    doc.splitTextToSize(disclaimer, contentWidth),
-    margin,
-    pageHeight - 22
-  );
-
+  doc.text(doc.splitTextToSize(disclaimer, contentWidth), margin, pageHeight - 22);
   doc.text("Preliminary Report – Pending Physician Review", margin, pageHeight - 10);
 
   return URL.createObjectURL(doc.output("blob"));
 
-  /* ===== helpers ===== */
+  /* ========== HELPERS ========== */
 
   function section(title) {
     doc.setFontSize(12);
     doc.setFont(undefined, "bold");
+    doc.setTextColor(0);
     doc.text(title, margin, yPos);
     yPos += 8;
     doc.setFontSize(10);
     doc.setFont(undefined, "normal");
   }
 
-  function row(l1, v1, l2, v2) {
-    doc.text(`${l1}:`, margin, yPos);
-    doc.text(v1 || "", margin + 28, yPos);
-    if (l2) {
-      doc.text(`${l2}:`, margin + 95, yPos);
-      doc.text(v2 || "", margin + 120, yPos);
+  function row(label1, value1, label2, value2) {
+    doc.text(`${label1}:`, margin, yPos);
+    doc.text(value1 || "", margin + 40, yPos);
+
+    if (label2) {
+      doc.text(`${label2}:`, margin + 110, yPos);
+      doc.text(value2 || "", margin + 140, yPos);
     }
+
     yPos += 6;
   }
 
@@ -111,9 +143,9 @@ export function generatePDF(data) {
   }
 
   function divider() {
-    yPos += 4;
+    yPos += 2;
     doc.line(margin, yPos, pageWidth - margin, yPos);
-    yPos += 8;
+    yPos += 6;
   }
 
   function resultSection(title, status, notes) {
@@ -123,11 +155,13 @@ export function generatePDF(data) {
       pageWidth - margin - 55,
       yPos - 8
     );
+
     if (notes) {
       const lines = doc.splitTextToSize(notes, contentWidth);
       doc.text(lines, margin + 5, yPos);
-      yPos += lines.length * 4;
+      yPos += lines.length * 4 + 2;
     }
+
     divider();
   }
 }
