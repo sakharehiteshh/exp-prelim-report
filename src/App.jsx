@@ -48,7 +48,22 @@ export default function PatientDemographicsApp() {
   const [cholesterolStatus, setCholesterolStatus] = useState("normal")
   const [cholesterolNotes, setCholesterolNotes] = useState("")
 
-  const [heartRiskScore, setHeartRiskScore] = useState("")
+  // Symptoms & Medical History
+  const [symptoms, setSymptoms] = useState("")
+  const [bpTreatment, setBpTreatment] = useState("")
+  const [smokingStatus, setSmokingStatus] = useState("")
+  const [diabetesStatus, setDiabetesStatus] = useState("")
+
+  // EKG rhythm classification for scoring
+  const [ekgRhythm, setEkgRhythm] = useState("")
+
+  // Heart sounds classification for scoring
+  const [heartSoundsClassification, setHeartSoundsClassification] = useState("")
+
+  // Express Heart Score outputs
+  const [expressHeartScore, setExpressHeartScore] = useState(null)
+  const [expressScoreBreakdown, setExpressScoreBreakdown] = useState(null)
+  const [framinghamRisk, setFraminghamRisk] = useState("")
 
   const [recipientEmail, setRecipientEmail] = useState("")
   const [isSendingEmail, setIsSendingEmail] = useState(false)
@@ -129,6 +144,52 @@ export default function PatientDemographicsApp() {
 }
 
 
+  function parseBloodPressure(bpString) {
+    if (!bpString) return null
+    const match = bpString.trim().match(/^(\d{2,3})\s*\/\s*(\d{2,3})$/)
+    if (!match) return null
+    return { systolic: parseInt(match[1], 10), diastolic: parseInt(match[2], 10) }
+  }
+
+  function calcPillar1(framRisk) {
+    if (framRisk === null) return null
+    if (framRisk < 10) return 20
+    if (framRisk <= 20) return 10
+    return 0
+  }
+
+  function calcPillar2(rhythm) {
+    if (!rhythm) return null
+    return { "normal-sinus": 25, "sinus-tachy-brady": 15, "afib-pvcs-other": 0 }[rhythm] ?? null
+  }
+
+  function calcPillar3(classification) {
+    if (!classification) return null
+    return { "normal-no-murmur": 25, "innocent-murmur": 10, "structural-murmur": 0 }[classification] ?? null
+  }
+
+  function calcPillar4(category) {
+    if (!category) return null
+    return { Good: 15, Average: 8, Poor: 0 }[category] ?? null
+  }
+
+  function calcPillar5(bpString, heartRateNum) {
+    const bp = parseBloodPressure(bpString)
+    if (!bp) return null
+    const { systolic, diastolic } = bp
+    const hr = Number(heartRateNum)
+    if (systolic >= 140 || diastolic >= 90 || (hr && (hr < 40 || hr > 110))) return 0
+    if (systolic < 120 && diastolic < 80 && hr >= 60 && hr <= 80) return 15
+    return 7
+  }
+
+  function getScoreGrade(score) {
+    if (score >= 90) return { label: "ELITE", color: "#16a34a" }
+    if (score >= 80) return { label: "OPTIMAL", color: "#178b92" }
+    if (score >= 70) return { label: "FAIR", color: "#d97706" }
+    return { label: "ACTION REQUIRED", color: "#dc2626" }
+  }
+
   // 🔹 Auto-calc VO2 max + category from 30sSTST
   useEffect(() => {
     const reps = Number.parseFloat(sitStandCount)
@@ -146,12 +207,39 @@ export default function PatientDemographicsApp() {
     setFitnessCategory(category)
   }, [sitStandCount, age, gender])
 
+  // Auto-calc Express Heart Score from all pillars
+  useEffect(() => {
+    const framRisk = framinghamRisk !== "" && !isNaN(Number(framinghamRisk)) ? Number(framinghamRisk) : null
+
+    const p1 = calcPillar1(framRisk)
+    const p2 = calcPillar2(ekgRhythm)
+    const p3 = calcPillar3(heartSoundsClassification)
+    const p4 = calcPillar4(fitnessCategory)
+    const p5 = calcPillar5(bloodPressure, heartRate)
+
+    const pillarValues = [p1, p2, p3, p4, p5]
+    const availableCount = pillarValues.filter(v => v !== null).length
+
+    if (availableCount < 3) {
+      setExpressHeartScore(null)
+      setExpressScoreBreakdown(null)
+      return
+    }
+
+    const total = pillarValues.reduce((sum, v) => sum + (v ?? 0), 0)
+    setExpressHeartScore(total)
+    setExpressScoreBreakdown({ p1, p2, p3, p4, p5 })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [framinghamRisk, ekgRhythm, heartSoundsClassification, fitnessCategory, bloodPressure, heartRate])
+
   const handleGeneratePDF = () => {
     const data = {
       patientName,
       dateOfBirth,
       age,
       gender,
+      symptoms,
+      medicalHistory: { bpTreatment, smokingStatus, diabetesStatus },
       vitals: {
         height: heightFeet && heightInches ? `${heightFeet}'${heightInches}"` : heightFeet ? `${heightFeet}'0"` : "",
         weight,
@@ -163,15 +251,16 @@ export default function PatientDemographicsApp() {
       ekg: {
         status: ekgStatus,
         notes: ekgNotes,
+        rhythm: ekgRhythm,
       },
       heartSounds: {
         status: heartSoundsStatus,
         notes: heartSoundsNotes,
+        classification: heartSoundsClassification,
       },
       fitness: {
         status: fitnessStatus,
         notes: fitnessNotes,
-        // 🔹 Include STST data in the PDF payload as well
         sitStandCount,
         vo2Max,
         fitnessCategory,
@@ -185,7 +274,12 @@ export default function PatientDemographicsApp() {
         status: cholesterolStatus,
         notes: cholesterolNotes,
       },
-      heartRiskScore,
+      expressHeartScore: {
+        total: expressHeartScore,
+        grade: expressHeartScore !== null ? getScoreGrade(expressHeartScore) : null,
+        framinghamRisk,
+        breakdown: expressScoreBreakdown,
+      },
     }
 
     const pdfUrl = generatePDF(data)
@@ -237,16 +331,21 @@ export default function PatientDemographicsApp() {
       o2Level,
       heartRate,
 
+      symptoms,
+      bpTreatment,
+      smokingStatus,
+      diabetesStatus,
+
       ekgStatus,
       ekgNotes,
+      ekgRhythm,
 
       heartSoundsStatus,
       heartSoundsNotes,
+      heartSoundsClassification,
 
       fitnessTestStatus: fitnessStatus,
       fitnessTestNotes: fitnessNotes,
-
-      // 🔹 STST data to sheet too (optional, but useful)
       sitStandCount,
       vo2Max,
       fitnessCategory,
@@ -260,7 +359,14 @@ export default function PatientDemographicsApp() {
       totalCholesterolStatus: cholesterolStatus,
       totalCholesterolNotes: cholesterolNotes,
 
-      heartRiskScore,
+      framinghamRisk: framinghamRisk !== null ? framinghamRisk : "",
+      expressHeartScore: expressHeartScore !== null ? expressHeartScore : "",
+      expressScoreGrade: expressHeartScore !== null ? getScoreGrade(expressHeartScore).label : "",
+      expressScoreP1: expressScoreBreakdown?.p1 ?? "",
+      expressScoreP2: expressScoreBreakdown?.p2 ?? "",
+      expressScoreP3: expressScoreBreakdown?.p3 ?? "",
+      expressScoreP4: expressScoreBreakdown?.p4 ?? "",
+      expressScoreP5: expressScoreBreakdown?.p5 ?? "",
     }
 
     try {
@@ -366,6 +472,88 @@ export default function PatientDemographicsApp() {
                       onClick={() => setGender("Unknown")}
                     >
                       Unknown
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Symptoms & Medical History */}
+          <div className="card">
+            <div className="card-header">
+              <h2 className="card-title">Symptoms &amp; Medical History</h2>
+              <p className="card-description">Patient-reported symptoms and key cardiovascular risk factors</p>
+            </div>
+            <div className="card-content">
+              <div className="form-group">
+                <label className="form-label" htmlFor="symptoms">
+                  Patient-Reported Symptoms
+                </label>
+                <textarea
+                  className="form-textarea"
+                  id="symptoms"
+                  value={symptoms}
+                  onChange={(e) => setSymptoms(e.target.value)}
+                  placeholder="Describe any chest pain, shortness of breath, palpitations, dizziness, syncope, or other symptoms..."
+                  rows={3}
+                />
+              </div>
+              <div className="form-grid" style={{ marginTop: "1rem" }}>
+                <div className="form-group">
+                  <label className="form-label">Blood Pressure Treatment</label>
+                  <div className="button-group-half">
+                    <button
+                      type="button"
+                      className={`toggle-button ${bpTreatment === "yes" ? "active" : ""}`}
+                      onClick={() => setBpTreatment("yes")}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      type="button"
+                      className={`toggle-button ${bpTreatment === "no" ? "active" : ""}`}
+                      onClick={() => setBpTreatment("no")}
+                    >
+                      No
+                    </button>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Smoking / Tobacco Use</label>
+                  <div className="button-group-half">
+                    <button
+                      type="button"
+                      className={`toggle-button ${smokingStatus === "yes" ? "active" : ""}`}
+                      onClick={() => setSmokingStatus("yes")}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      type="button"
+                      className={`toggle-button ${smokingStatus === "no" ? "active" : ""}`}
+                      onClick={() => setSmokingStatus("no")}
+                    >
+                      No
+                    </button>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Diabetes</label>
+                  <div className="button-group-half">
+                    <button
+                      type="button"
+                      className={`toggle-button ${diabetesStatus === "yes" ? "active" : ""}`}
+                      onClick={() => setDiabetesStatus("yes")}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      type="button"
+                      className={`toggle-button ${diabetesStatus === "no" ? "active" : ""}`}
+                      onClick={() => setDiabetesStatus("no")}
+                    >
+                      No
                     </button>
                   </div>
                 </div>
@@ -485,6 +673,32 @@ export default function PatientDemographicsApp() {
             </div>
             <div className="card-content">
               <div className="form-group">
+                <label className="form-label">Rhythm Classification</label>
+                <div className="button-group">
+                  <button
+                    type="button"
+                    className={`toggle-button ${ekgRhythm === "normal-sinus" ? "active" : ""}`}
+                    onClick={() => setEkgRhythm("normal-sinus")}
+                  >
+                    Normal Sinus Rhythm
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-button ${ekgRhythm === "sinus-tachy-brady" ? "active" : ""}`}
+                    onClick={() => setEkgRhythm("sinus-tachy-brady")}
+                  >
+                    Sinus Tachy / Bradycardia
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-button ${ekgRhythm === "afib-pvcs-other" ? "active" : ""}`}
+                    onClick={() => setEkgRhythm("afib-pvcs-other")}
+                  >
+                    AFib / PVCs / Other
+                  </button>
+                </div>
+              </div>
+              <div className="form-group">
                 <label className="form-label">Status</label>
                 <div className="button-group-half">
                   <button
@@ -527,6 +741,32 @@ export default function PatientDemographicsApp() {
               <p className="card-description">Auscultation examination results</p>
             </div>
             <div className="card-content">
+              <div className="form-group">
+                <label className="form-label">Auscultation Classification</label>
+                <div className="button-group">
+                  <button
+                    type="button"
+                    className={`toggle-button ${heartSoundsClassification === "normal-no-murmur" ? "active" : ""}`}
+                    onClick={() => setHeartSoundsClassification("normal-no-murmur")}
+                  >
+                    Normal (No Murmur)
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-button ${heartSoundsClassification === "innocent-murmur" ? "active" : ""}`}
+                    onClick={() => setHeartSoundsClassification("innocent-murmur")}
+                  >
+                    Innocent Murmur
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-button ${heartSoundsClassification === "structural-murmur" ? "active" : ""}`}
+                    onClick={() => setHeartSoundsClassification("structural-murmur")}
+                  >
+                    Structural Murmur / Low EF
+                  </button>
+                </div>
+              </div>
               <div className="form-group">
                 <label className="form-label">Status</label>
                 <div className="button-group-half">
@@ -769,26 +1009,122 @@ export default function PatientDemographicsApp() {
             </div>
           </div>
 
-          {/* Heart Risk Score */}
+          {/* Framingham Risk Score */}
           <div className="card">
             <div className="card-header">
-              <h2 className="card-title">Heart Risk Score</h2>
-              <p className="card-description">Overall cardiovascular risk assessment</p>
+              <h2 className="card-title">Framingham Risk Score</h2>
+              <p className="card-description">10-year cardiovascular disease risk (%)</p>
             </div>
             <div className="card-content">
               <div className="form-group">
-                <label className="form-label" htmlFor="heartRiskScore">
-                  Risk Score
+                <label className="form-label" htmlFor="framinghamRisk">
+                  10-Year CVD Risk (%)
                 </label>
                 <input
                   className="form-input"
-                  id="heartRiskScore"
-                  type="text"
-                  value={heartRiskScore}
-                  onChange={(e) => setHeartRiskScore(e.target.value)}
-                  placeholder="Enter calculated risk score"
+                  id="framinghamRisk"
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={framinghamRisk}
+                  onChange={(e) => setFraminghamRisk(e.target.value)}
+                  placeholder="e.g., 8"
                 />
               </div>
+              {framinghamRisk !== "" && !isNaN(Number(framinghamRisk)) && (
+                <div className="framingham-result" style={{ marginTop: "0.75rem" }}>
+                  <div
+                    className="framingham-risk-label"
+                    style={{
+                      backgroundColor: Number(framinghamRisk) < 10 ? "#16a34a" : Number(framinghamRisk) <= 20 ? "#d97706" : "#dc2626",
+                    }}
+                  >
+                    {Number(framinghamRisk) < 10 ? "LOW RISK" : Number(framinghamRisk) <= 20 ? "INTERMEDIATE RISK" : "HIGH RISK"}
+                  </div>
+                  <p className="framingham-risk-description">
+                    {Number(framinghamRisk) < 10
+                      ? "Less than 10% chance of a cardiovascular event in the next 10 years."
+                      : Number(framinghamRisk) <= 20
+                      ? "10–20% chance of a cardiovascular event in the next 10 years."
+                      : "Greater than 20% chance of a cardiovascular event in the next 10 years."}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Express Heart Score */}
+          <div className="card">
+            <div className="card-header">
+              <h2 className="card-title">Express Heart Score</h2>
+              <p className="card-description">Auto-calculated 5-pillar cardiovascular composite score (max 100)</p>
+            </div>
+            <div className="card-content">
+              {expressHeartScore === null ? (
+                <p className="score-pending-text">
+                  Complete at least 3 pillars to generate the Express Heart Score. Required inputs: EKG rhythm classification, heart sounds classification, fitness test, cholesterol panel, and vitals (blood pressure &amp; heart rate).
+                </p>
+              ) : (
+                <>
+                  <div className="score-display-row">
+                    <div className="score-circle" style={{ borderColor: getScoreGrade(expressHeartScore).color }}>
+                      <span className="score-number" style={{ color: getScoreGrade(expressHeartScore).color }}>
+                        {expressHeartScore}
+                      </span>
+                      <span className="score-max">/100</span>
+                    </div>
+                    <div className="score-badge" style={{ backgroundColor: getScoreGrade(expressHeartScore).color }}>
+                      {getScoreGrade(expressHeartScore).label}
+                    </div>
+                  </div>
+                  {framinghamRisk !== null && (
+                    <p className="score-framingham-note">
+                      Framingham 10-Year CVD Risk: <strong>{framinghamRisk}%</strong>
+                    </p>
+                  )}
+                  <table className="score-breakdown-table">
+                    <thead>
+                      <tr>
+                        <th>Pillar</th>
+                        <th>Score</th>
+                        <th>Max</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Framingham Baseline (W<sub>F</sub>)</td>
+                        <td className={expressScoreBreakdown.p1 === null ? "score-cell-na" : ""}>{expressScoreBreakdown.p1 ?? "—"}</td>
+                        <td>20</td>
+                      </tr>
+                      <tr>
+                        <td>EKG Rhythm Precision (W<sub>E</sub>)</td>
+                        <td className={expressScoreBreakdown.p2 === null ? "score-cell-na" : ""}>{expressScoreBreakdown.p2 ?? "—"}</td>
+                        <td>25</td>
+                      </tr>
+                      <tr>
+                        <td>Acoustic &amp; Structural Integrity (W<sub>A</sub>)</td>
+                        <td className={expressScoreBreakdown.p3 === null ? "score-cell-na" : ""}>{expressScoreBreakdown.p3 ?? "—"}</td>
+                        <td>25</td>
+                      </tr>
+                      <tr>
+                        <td>Metabolic Power VO₂ Max (W<sub>V</sub>)</td>
+                        <td className={expressScoreBreakdown.p4 === null ? "score-cell-na" : ""}>{expressScoreBreakdown.p4 ?? "—"}</td>
+                        <td>15</td>
+                      </tr>
+                      <tr>
+                        <td>Hemodynamic Stability (W<sub>B</sub>)</td>
+                        <td className={expressScoreBreakdown.p5 === null ? "score-cell-na" : ""}>{expressScoreBreakdown.p5 ?? "—"}</td>
+                        <td>15</td>
+                      </tr>
+                      <tr className="score-total-row">
+                        <td><strong>Total Score</strong></td>
+                        <td><strong>{expressHeartScore}</strong></td>
+                        <td><strong>100</strong></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </>
+              )}
             </div>
           </div>
 
