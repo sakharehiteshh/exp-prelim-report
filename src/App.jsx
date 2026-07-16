@@ -359,7 +359,7 @@ export default function PatientDemographicsApp() {
       totalCholesterolStatus: cholesterolStatus,
       totalCholesterolNotes: cholesterolNotes,
 
-      framinghamRisk: framinghamRisk !== null ? framinghamRisk : "",
+      heartRiskScore: framinghamRisk !== null ? framinghamRisk : "",
       expressHeartScore: expressHeartScore !== null ? expressHeartScore : "",
       expressScoreGrade: expressHeartScore !== null ? getScoreGrade(expressHeartScore).label : "",
       expressScoreP1: expressScoreBreakdown?.p1 ?? "",
